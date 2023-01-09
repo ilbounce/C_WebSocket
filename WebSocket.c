@@ -53,21 +53,22 @@ void close_websocket_client(TLS_SOCKET* s)
 
 int SEND(TLS_SOCKET* s, const char** command)
 {
-    char* frame = malloc(strlen(*command) + 3);
     char* frame_header = malloc(1);
     frame_header[0] = 1 << 7 | 1;
 
     register int len = strlen(*command);
 
+    register size_t mask = 1;
+
     if (len < 0x7f) {
         frame_header = realloc(frame_header, 3);
-        frame_header[1] = 0 << 7 | len;
+        frame_header[1] = mask << 7 | len;
         frame_header[2] = '\0';
     }
 
     else if (len < 1 << 16) {
         frame_header = realloc(frame_header, 5);
-        frame_header[1] = 0 << 7 | 0x7e;
+        frame_header[1] = mask << 7 | 0x7e;
         frame_header[2] = (len >> 8) & 0xff;
         frame_header[3] = (len >> 0) & 0xff;
         frame_header[4] = '\0';
@@ -75,32 +76,53 @@ int SEND(TLS_SOCKET* s, const char** command)
 
     else {
         frame_header = realloc(frame_header, 11);
-        frame_header[1] = 0 << 7 | 0x7f;
+        frame_header[1] = mask << 7 | 0x7f;
         for (register size_t i = 2; i < 10; i++) {
             frame_header[i] = (len >> (8 * (10 - i - 1))) & 0xff;
         }
         frame_header[10] = '\0';
     }
 
+    char* mask_key = get_security_key(4);
+    register int length = strlen(mask_key) + strlen(frame_header);
+
+    char* frame = malloc(strlen(*command) + length + 1);
+
 #ifdef _WIN32
-    register int length = sprintf_s(frame, strlen(*command) + strlen(frame_header) + 2, "%s%s", frame_header, *command);
+    sprintf_s(frame, length + 2, "%s%s", frame_header, mask_key);;
 #elif __linux__
-    register int length = sprintf(frame, "%s%s", frame_header, *command);
+    sprintf(frame, "%s%s", frame_header, mask_key);
 #endif
+
+    for (register size_t i = 0; i < strlen(*command); i++)
+    {
+        char c = (*command)[i];
+        char mask_c = (char)(c ^ mask_key[(i - 4) % 4]);
+        frame[i + length] = mask_c;
+    }
+
+    length += strlen(*command);
+
+    frame[length] = "\0";
 
     if (tls_write(s, frame, length) != 0) {
         printf("Can't send command\n");
         tls_disconnect(s);
     }
+
+    free(frame_header);
+    free(mask_key);
+    free(frame);
 }
 
-char* RECV(TLS_SOCKET* s)
+RESPONSE* RECV(TLS_SOCKET* s)
 {
     char* resp_buf = NULL;
     char head_buf[2];
+    RESPONSE* response = malloc(sizeof(RESPONSE));
     if (tls_read(s, head_buf, sizeof(head_buf)) <= 0) {
         tls_disconnect(s);
-        return NULL;
+        return response;
     }
     register size_t response_length = head_buf[1] & 0x7f;
 
@@ -108,7 +130,7 @@ char* RECV(TLS_SOCKET* s)
         char add_head_buf[2];
         if (tls_read(s, add_head_buf, sizeof(add_head_buf)) <= 0) {
             tls_disconnect(s);
-            return NULL;
+            return response;
         }
 
         response_length = (unsigned short)((unsigned short)add_head_buf[0] << 8) | (unsigned char)add_head_buf[1];
@@ -122,7 +144,7 @@ char* RECV(TLS_SOCKET* s)
         char add_head_buf[8];
         if (tls_read(s, add_head_buf, sizeof(add_head_buf)) <= 0) {
             tls_disconnect(s);
-            return NULL;
+            return response;
         }
 
         response_length = 0;
@@ -144,8 +166,10 @@ char* RECV(TLS_SOCKET* s)
         resp_buf[response_length] = '\0';
 
     }
+    response->resp_buf = resp_buf;
+    response->resp_length = response_length;
 
-    return resp_buf;
+    return response;
 }
 
 static int tls_handshake(TLS_SOCKET* s, const char* hostname, const char* resource)
@@ -214,6 +238,8 @@ static int tls_handshake(TLS_SOCKET* s, const char* hostname, const char* resour
         tls_disconnect(s);
         return -1;
     }
+
+    free(key);
 
     return 0;
 }
@@ -524,7 +550,7 @@ static void tls_disconnect(TLS_SOCKET* s)
 #elif __linux__
     SSL_shutdown(s->ssl);
     SSL_free(s->ssl);
-    SSL_ctx_free(s->ssl_ctx);
+    SSL_CTX_free(s->ssl_ctx);
     shutdown(s->sock, SHUT_WR);
     close(s->sock);
 #endif

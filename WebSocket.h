@@ -73,6 +73,11 @@ typedef struct {
 
 #endif
 
+typedef struct {
+    char* resp_buf;
+    int resp_length;
+} RESPONSE;
+
 static int tls_connect(TLS_SOCKET* tls_sock, const char* hostname, const char* port);
 static void tls_disconnect(TLS_SOCKET* s);
 static int tls_write(TLS_SOCKET* s, const void* buffer, int size);
@@ -82,4 +87,4 @@ static char* get_security_key(size_t length);
 TLS_SOCKET* create_websocket_client(const char** uri);
 void close_websocket_client(TLS_SOCKET* s);
 int SEND(TLS_SOCKET* s, const char** command);
-char* RECV(TLS_SOCKET* s);
+RESPONSE* RECV(TLS_SOCKET* s);

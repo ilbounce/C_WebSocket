@@ -6,8 +6,6 @@
 void main() 
 {
 	const char* URI = "wss://stream.binance.com/ws";
-	char* a;
-	char* b;
 
 	TLS_SOCKET* sock = create_websocket_client(&URI);
 	if (sock) {
@@ -15,7 +13,12 @@ void main()
 			"\"id\" : 0}";
 		SEND(sock, &command);
 		for (register size_t i = 0; i < 25; i++) {
-			printf("%s\n", RECV(sock));
+			RESPONSE* response = RECV(sock);
+			char* msg = response->resp_buf;
+			printf("%s\n", msg);
+
+			free(response->resp_buf);
+			free(response);
 		}
 
 		close_websocket_client(sock);
