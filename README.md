@@ -1,6 +1,11 @@
 # C_WebSocket
 Simple TLS Websocket in c implemented for Windows and Linux.
 
+Linux compilation:
+```console
+gcc -o TLSSocket2 test.c WebSocket.c -lssl -lcrypto
+```
+
 ```C
 const char* URI = "wss://stream.binance.com/ws";
 TLS_SOCKET* sock = create_websocket_client(&URI);
