@@ -3,12 +3,15 @@
 static char* get_security_key(size_t length) {
     char charset[] = "0123456789"
         "abcdefghijklmnopqrstuvwxyz"
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "+=";
 
     char* key = malloc(length + 1);
     char* r_key = key;
+    srand(time(NULL));
     while (length-- > 0) {
-        size_t index = (double)rand() / RAND_MAX * (sizeof charset - 1);
+        //size_t index = (double)rand() / RAND_MAX * (sizeof charset - 1);
+        size_t index = rand() % strlen(charset);
         *(key++) = charset[index];
     }
     *key = '\0';
@@ -23,12 +26,8 @@ TLS_SOCKET* create_websocket_client(const char** uri)
     char hostname[100];
     char resource[8];
     char* port;
-#ifdef _WIN32
-    sscanf_s(*uri, "%[^:]://%[^/]%s", serv, 8, hostname, 100, resource, 8);
-#elif __linux__
     sscanf(*uri, "%[^:]://%[^/]%s", serv, hostname, resource);
-#endif
-    if (strcmp(serv, "wss") == 0) {
+    if ((strcmp(serv, "wss") == 0) || (strcmp(serv, "https") == 0)) {
         port = "443";
     }
     else port = "80";
@@ -174,35 +173,10 @@ RESPONSE* RECV(TLS_SOCKET* s)
 
 static int tls_handshake(TLS_SOCKET* s, const char* hostname, const char* resource)
 {
-    char* key = get_security_key(16);
+    char* key = get_security_key(24);
     char* handshake_response = malloc(5);
-#ifdef _WIN32
-    strcpy_s(handshake_response, 5, "GET ");
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + strlen(resource) + 2);
-    strcat_s(handshake_response, strlen(handshake_response) + strlen(resource) + 3, resource);
-
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + 39);
-    strcat_s(handshake_response, strlen(handshake_response) + 40, " HTTP/1.1\r\nUpgrade: websocket\r\nHost: ");
-
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + strlen(hostname) + 2);
-    strcat_s(handshake_response, strlen(handshake_response) + strlen(hostname) + 3, hostname);
-
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + 19);
-    strcat_s(handshake_response, strlen(handshake_response) + 20, "\r\nOrigin: http://");
-
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + strlen(hostname) + 2);
-    strcat_s(handshake_response, strlen(handshake_response) + strlen(hostname) + 3, hostname);
-
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + 23);
-    strcat_s(handshake_response, strlen(handshake_response) + 24, "\r\nSec-WebSocket-Key: ");
-
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + strlen(key) + 2);
-    strcat_s(handshake_response, strlen(handshake_response) + strlen(key) + 3, key);
-
-    handshake_response = realloc(handshake_response, strlen(handshake_response) + 53);
-    strcat_s(handshake_response, strlen(handshake_response) + 54, "\r\nSec-WebSocket-Version: 13\r\nConnection: Upgrade\r\n\r\n");
-#elif __linux__
     strcpy(handshake_response, "GET ");
+
     handshake_response = realloc(handshake_response, strlen(handshake_response) + strlen(resource) + 2);
     strcat(handshake_response, resource);
 
@@ -226,18 +200,23 @@ static int tls_handshake(TLS_SOCKET* s, const char* hostname, const char* resour
 
     handshake_response = realloc(handshake_response, strlen(handshake_response) + 53);
     strcat(handshake_response, "\r\nSec-WebSocket-Version: 13\r\nConnection: Upgrade\r\n\r\n");
-#endif
+
+    printf("%s\n", handshake_response);
+
     if (tls_write(s, handshake_response, strlen(handshake_response)) != 0) {
         printf("Can't handshake to %s\n", hostname);
         tls_disconnect(s);
         return -1;
     }
+
     char buf[1024];
     if (tls_read(s, buf, sizeof(buf)) <= 0) {
         printf("Can't handshake to %s\n", hostname);
         tls_disconnect(s);
         return -1;
     }
+
+    printf("%s\n", buf);
 
     free(key);
 
