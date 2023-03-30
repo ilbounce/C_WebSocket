@@ -201,8 +201,6 @@ static int tls_handshake(TLS_SOCKET* s, const char* hostname, const char* resour
     handshake_response = realloc(handshake_response, strlen(handshake_response) + 53);
     strcat(handshake_response, "\r\nSec-WebSocket-Version: 13\r\nConnection: Upgrade\r\n\r\n");
 
-    printf("%s\n", handshake_response);
-
     if (tls_write(s, handshake_response, strlen(handshake_response)) != 0) {
         printf("Can't handshake to %s\n", hostname);
         tls_disconnect(s);
@@ -215,8 +213,6 @@ static int tls_handshake(TLS_SOCKET* s, const char* hostname, const char* resour
         tls_disconnect(s);
         return -1;
     }
-
-    printf("%s\n", buf);
 
     free(key);
 
